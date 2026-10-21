@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบแจ้งเหตุฉุกเฉิน</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: #1e1e1e;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(255, 0, 0, 0.2);
+            max-width: 400px;
+            width: 90%;
+        }
+        h1 {
+            color: #ff4d4d;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .sos-btn {
+            background-color: #ff3b30;
+            color: white;
+            border: none;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(255, 59, 48, 0.6);
+            transition: 0.2s;
+            outline: none;
+        }
+        .sos-btn:active {
+            transform: scale(0.95);
+            background-color: #d32f2f;
+        }
+        .stop-btn {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            display: none;
+            transition: 0.2s;
+        }
+        .stop-btn:hover {
+            background-color: #777;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            min-height: 50px;
+        }
+        .alert-box {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+            border: 2px solid #ef5350;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🚨 ปุ่มฉุกเฉิน SOS</h1>
+        <p style="color: #aaa; font-size: 14px; margin-bottom: 25px;">กดปุ่มด้านล่างเพื่อขอความช่วยเหลือด่วน</p>
+        
+        <button class="sos-btn" onclick="triggerSOS()">กดแจ้งเหตุ</button>
+        <br>
+        <button id="stopBtn" class="stop-btn" onclick="stopSirenSound()">🛑 หยุดเสียงเตือน</button>
+        
+        <div id="status"></div>
+
+        <div id="alertBox" class="alert-box">
+            <h3 style="margin: 0 0 5px 0;">⚠️ แจ้งเตือนสำเร็จ!</h3>
+            <p id="alertText" style="margin: 0; font-size: 15px;"></p>
+        </div>
+    </div>
+
+    <script>
+        let sirenInterval = null;
+        let audioCtx = null;
+
+        function triggerSOS() {
+            const statusDiv = document.getElementById("status");
+            const alertBox = document.getElementById("alertBox");
+            const alertText = document.getElementById("alertText");
+            const stopBtn = document.getElementById("stopBtn");
+
+            statusDiv.innerHTML = "กำลังระบุพิกัด GPS...";
+            statusDiv.style.color = "#ffa726";
+
+            // 1. เริ่มเล่นเสียงไซเรนแบบวนลูปไม่มีที่สิ้นสุด
+            startInfiniteSiren();
+            stopBtn.style.display = "inline-block";
+
+            // 2. ดึงพิกัด GPS จากเบราว์เซอร์จริง
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude.toFixed(6);
+                        const lon = position.coords.longitude.toFixed(6);
+                        
+                        statusDiv.innerHTML = "ส่งข้อมูลพิกัดสำเร็จ!";
+                        statusDiv.style.color = "#66bb6a";
+
+                        alertBox.style.display = "block";
+                        alertText.innerHTML = `พิกัดของคุณ: (${lat}, ${lon})<br><b>🚨 ตำรวจกำลังมาถึงภายใน 5 นาที!</b>`;
+                    },
+                    (error) => {
+                        statusDiv.innerHTML = "ไม่สามารถดึงพิกัดได้ (ระบุตำแหน่งถูกปฏิเสธ)";
+                        statusDiv.style.color = "#ef5350";
+
+                        alertBox.style.display = "block";
+                        alertText.innerHTML = `<b>🚨 ตำรวจกำลังมาถึงภายใน 5 นาที!</b><br><small>(ใช้งานแบบจำลองพิกัด)</small>`;
+                    }
+                );
+            } else {
+                statusDiv.innerHTML = "เบราว์เซอร์ไม่รองรับ GPS";
+            }
+        }
+
+        // ฟังก์ชันสร้างเสียงไซเรนแบบวนซ้ำไม่รู้จบ
+        function startInfiniteSiren() {
+            if (sirenInterval) return; // ป้องกันการกดซ้ำแล้วเสียงซ้อนกัน
+
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            function playBeep() {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.3);
+                
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+
+            // เล่นทันที 1 ครั้ง แล้วตั้งเวลาวนลูปทุกๆ 0.6 วินาที
+            playBeep();
+            sirenInterval = setInterval(playBeep, 600);
+        }
+
+        // ฟังก์ชันสำหรับกดหยุดเสียงไซเรน
+        function stopSirenSound() {
+            if (sirenInterval) {
+                clearInterval(sirenInterval);
+                sirenInterval = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+            document.getElementById("stopBtn").style.display = "none";
+            document.getElementById("status").innerHTML = "หยุดเสียงเตือนแล้ว";
+            document.getElementById("status").style.color = "#aaa";
+        }
+    </script>
+
+</body>
+</html>
